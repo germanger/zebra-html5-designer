@@ -1,0 +1,501 @@
+
+<!DOCTYPE html>
+<html ng-app="zebraApp">
+<head>
+    <title>Zebra HTML5 Designer</title>
+    
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+          
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/angularjs-toaster/2.0.0/toaster.min.css" />
+    
+    <style>
+        html {
+            overflow: -moz-scrollbars-vertical; 
+            overflow-y: scroll;
+            position: relative;
+            min-height: 100%;
+        }
+
+        h2 {
+            font-size: 20px;
+        }
+        
+        .bordered {
+            border: 1px solid black;
+        }
+    </style>
+    
+    <script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.5.8/angular.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/angular.js/1.5.8/angular-animate.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/angular-ui-bootstrap/2.5.0/ui-bootstrap.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/angular-ui-bootstrap/2.5.0/ui-bootstrap-tpls.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/angularjs-toaster/2.0.0/toaster.min.js"></script>
+    <script src="https://froatsnook.github.io/bardcode/bardcode.js"></script>
+
+    <script>
+        angular.module('zebraApp', ['ui.bootstrap', 'toaster']);
+        
+        angular.module('zebraApp').controller('mainController', ['$scope', '$http', '$window', 'toaster', '$uibModal', function ($scope, $http, $window, toaster, $uibModal) {
+        
+            function BoxItem (x, y, height, width, lineWidth) {
+                this.x = x;
+                this.y = y;
+                this.height = height;         // in dots, 0 to 32000, initial: 1
+                this.width = width;           // in dots, 0 to 32000, initial: 1
+                this.lineWidth = lineWidth;   // in dots, 1 to 32000, initial: 1
+
+                this.getZPL = function() {
+                    return "^FO{x},{y}^GB{width},{height},{lineWidth}^FS"
+                        .replace(/\{x\}/g, this.x)
+                        .replace(/\{y\}/g, this.y)
+                        .replace(/\{height\}/g, this.height)
+                        .replace(/\{width\}/g, this.width)
+                        .replace(/\{lineWidth\}/g, this.lineWidth);
+                };
+
+                this.renderToCanvas = function(context) {
+                    context.lineWidth = this.lineWidth;
+                    context.rect(this.x, this.y, this.width, this.height);
+                    context.stroke();
+                };
+                
+                this.getDescription = function() {
+                    return "Box";
+                };
+            }
+            
+            function TextItem (x, y, text) {
+                this.x = x;
+                this.y = y;
+                this.fontName = 0;    // A to Z, 0 to 9, initial: A
+                this.fontHeight = 20;  // in dots, 0 to 32000, initial: 5
+                this.fontWidth = 20;  // in dots, 0 to 32000, initial: 5
+                this.text = text;
+
+                this.getZPL = function() {
+                    return "^CF{fontName},{fontHeight},{fontWidth}^FO{x},{y}^FD{text}^FS"
+                        .replace(/\{x\}/g, this.x)
+                        .replace(/\{y\}/g, this.y)
+                        .replace(/\{fontName\}/g, this.fontName)
+                        .replace(/\{fontWidth\}/g, this.fontWidth)
+                        .replace(/\{fontHeight\}/g, this.fontHeight)
+                        .replace(/\{text\}/g, this.text);
+                };
+
+                this.renderToCanvas = function(context) {
+                    context.font = this.fontWidth + "px Arial";
+                    context.fillText(this.text, this.x, this.y + this.fontWidth);
+                };
+                
+                this.getDescription = function() {
+                    return this.text;
+                };
+            }
+            
+            function BarcodeItem (x, y, text) {
+                this.x = x;
+                this.y = y;
+                this.width = 3;
+                this.height = 60;
+                this.widthRatio = 20;
+                this.text = text;
+
+                this.getZPL = function() {
+                    return "^BY{width},{widthRatio},{height}^FO{x},{y}^BC^FD{text}^FS"
+                        .replace(/\{x\}/g, this.x)
+                        .replace(/\{y\}/g, this.y)
+                        .replace(/\{width\}/g, this.width)
+                        .replace(/\{widthRatio\}/g, this.widthRatio)
+                        .replace(/\{height\}/g, this.height)
+                        .replace(/\{text\}/g, this.text);
+                };
+
+                this.renderToCanvas = function(context) {
+                    drawBarcode(context, this.text, {
+                        type: "Code 128",
+                        x: parseInt(this.x),
+                        y: parseInt(this.y),
+                        horizontalAlign: "center",
+                        verticalAlign: "middle"
+                    });
+                };
+                
+                this.getDescription = function() {
+                    return "Barcode: " + this.text;
+                };
+            }
+
+            $scope.items = [new BoxItem(100, 100, 50, 100, 3), new TextItem(0, 0, "Welcome!")];
+            $scope.selectedItem = null;
+            $scope.zpl = "";
+            
+            $scope.redraw = function () {
+                var canvas = document.getElementById("canvas");
+                var context = canvas.getContext("2d");
+                
+                // Clear
+                context.clearRect(0, 0, canvas.width, canvas.height);
+                context.beginPath();
+                $scope.zpl = "^XA";
+
+                for (var i = 0; i < $scope.items.length; i++) {
+                    $scope.items[i].renderToCanvas(context);
+                    $scope.zpl = $scope.zpl + "\r\n" + $scope.items[i].getZPL();
+                }
+                
+                $scope.zpl = $scope.zpl + "\r\n^XZ";
+            };
+            
+            $scope.redraw();
+            
+            $scope.removeSelectedItem = function () {
+                for (var i = 0; i < $scope.items.length; i++) {
+                    if ($scope.items[i] == $scope.selectedItem) {
+                        $scope.items.splice(i, 1);
+                    }
+                }
+            
+                $scope.redraw();
+            };
+            
+            $scope.openTextItemModal = function (createMode) {
+            
+                var modalScope = $scope.$new();
+                modalScope.createMode = createMode;
+                
+                if (createMode) {
+                    modalScope.textItem = new TextItem(0, 0, "Some text");
+                } else {
+                    modalScope.textItem = angular.copy($scope.selectedItem);
+                }
+                
+                var modalInstance = $uibModal.open({
+                    templateUrl: 'text-item-modal.html',
+                    controller: 'textItemModalController',
+                    scope: modalScope,
+                });
+                
+                modalInstance.result.then(function (item) {       
+                    if (createMode) {
+                        $scope.items.push(item);
+                    } else {
+                        angular.extend($scope.selectedItem, item);
+                    }
+                    
+                    $scope.redraw();
+
+                }, null);
+            };
+            
+            $scope.openBoxItemModal = function (createMode) {
+
+                var modalScope = $scope.$new();
+                modalScope.createMode = createMode;
+                
+                if (createMode) {
+                    modalScope.boxItem = new BoxItem(0, 0, 10, 10, 1);
+                } else {
+                    modalScope.boxItem = angular.copy($scope.selectedItem);
+                }
+                
+                var modalInstance = $uibModal.open({
+                    templateUrl: 'box-item-modal.html',
+                    controller: 'boxItemModalController',
+                    scope: modalScope,
+                });
+                
+                modalInstance.result.then(function (item) {       
+                    if (createMode) {
+                        $scope.items.push(item);
+                    } else {
+                        angular.extend($scope.selectedItem, item);
+                    }
+                    
+                    $scope.redraw();
+
+                }, null);
+                
+            };
+            
+            $scope.openBarcodeItemModal = function (createMode) {
+
+                var modalScope = $scope.$new();
+                modalScope.createMode = createMode;
+                
+                if (createMode) {
+                    modalScope.barcodeItem = new BarcodeItem(0, 0, "111111");
+                } else {
+                    modalScope.barcodeItem = angular.copy($scope.selectedItem);
+                }
+                
+                var modalInstance = $uibModal.open({
+                    templateUrl: 'barcode-item-modal.html',
+                    controller: 'barcodeItemModalController',
+                    scope: modalScope,
+                });
+                
+                modalInstance.result.then(function (item) {       
+                    if (createMode) {
+                        $scope.items.push(item);
+                    } else {
+                        angular.extend($scope.selectedItem, item);
+                    }
+                    
+                    $scope.redraw();
+
+                }, null);
+                
+            };
+            
+            $scope.openSelectedItemModal = function () {
+
+                if ($scope.selectedItem instanceof BoxItem) {                    
+                    $scope.openBoxItemModal(false);
+                } else if ($scope.selectedItem instanceof TextItem) {
+                    $scope.openTextItemModal(false);
+                } else if ($scope.selectedItem instanceof BarcodeItem) {
+                    $scope.openBarcodeItemModal(false);
+                }
+            };
+            
+            $scope.selectItem = function(item) {
+                $scope.selectedItem  = item;
+            };
+        }]);
+        
+        angular.module('zebraApp').controller('textItemModalController', ['$scope', '$http', '$window', 'toaster', '$uibModalInstance', function ($scope, $http, $window, toaster, $uibModalInstance) {
+        
+            $scope.accept = function () {
+                $uibModalInstance.close($scope.textItem);
+            };
+        
+            $scope.cancel = function () {
+                $uibModalInstance.dismiss('cancel');
+            };
+        }]);
+        
+        angular.module('zebraApp').controller('boxItemModalController', ['$scope', '$http', '$window', 'toaster', '$uibModalInstance', function ($scope, $http, $window, toaster, $uibModalInstance) {
+        
+            $scope.accept = function () {
+                $uibModalInstance.close($scope.boxItem);
+            };
+        
+            $scope.cancel = function () {
+                $uibModalInstance.dismiss('cancel');
+            };
+        }]);
+        
+        angular.module('zebraApp').controller('barcodeItemModalController', ['$scope', '$http', '$window', 'toaster', '$uibModalInstance', function ($scope, $http, $window, toaster, $uibModalInstance) {
+        
+            $scope.accept = function () {
+                $uibModalInstance.close($scope.barcodeItem);
+            };
+        
+            $scope.cancel = function () {
+                $uibModalInstance.dismiss('cancel');
+            };
+        }]);
+    </script>
+</head>
+
+<body>
+    <div class="container" ng-controller="mainController">
+        <h1>Zebra HTML5 Designer</h1>
+        <p>The code is available at <a href="https://github.com/germanger/zebra-html5-designer" target="_blank">GitHub</a></p>
+
+        <div class="row">
+            <div class="col-md-6">
+                <uib-tabset>
+                    <uib-tab>
+                        <uib-tab-heading>
+                            <i class="glyphicon glyphicon-pencil" style="margin-right: 15px"></i>
+                            <strong>Designer</strong>
+                        </uib-tab-heading>
+
+                        <div class="form-group" style="margin-top: 30px">
+                            <label for="">Label DPI</label>
+                            <select class="form-control input-sm" ng-model="label.dpi">
+                                <option value="">152 dpi</option>
+                                <option value="">203 dpi</option>
+                                <option value="">300 dpi</option>
+                                <option value="">600 dpi</option>
+                            </select>
+                        </div>
+                        
+                        <div class="form-group" >
+                            <button class="btn btn-default" ng-click="openTextItemModal(true)" ng-disabled="">New text</button>
+                            <button class="btn btn-default" ng-click="openBoxItemModal(true)" ng-disabled="">New box / line</button>
+                            <button class="btn btn-default" ng-click="openBarcodeItemModal(true)" ng-disabled="">New barcode</button>
+                        </div>
+                        
+                        <div style="overflow-y: scroll; height: 200px; border: 1px solid black">
+                            <table class="table table-bordered table-condensed" style="cursor: pointer">
+                                <tr ng-repeat="item in items">
+                                    <td style="{{ selectedItem == item ? 'background-color: #d9edf7' : '' }}" ng-click="selectItem(item)">{{ item.getDescription() }}</td>
+                                </tr>
+                            </table>
+                        </div>
+                        
+                        <p>Selection:</p>
+                        
+                        <div class="form-group">
+                            <button class="btn btn-default" ng-click="openSelectedItemModal()" ng-disabled="selectedItem == null"><span class="glyphicon glyphicon-pencil" /></button>
+                            <button class="btn btn-default" ng-click="removeSelectedItem()" ng-disabled="selectedItem == null"><span class="glyphicon glyphicon-remove" /></button>
+                            <!--<input type="range" ng-model="selectedItem.x" ng-disabled="selectedItem == null" style="width: 50%" ng-change="redraw()" />
+                            <input type="range" ng-model="selectedItem.y" ng-disabled="selectedItem == null" style="width: 50%" ng-change="redraw()" />-->
+                        </div>
+                    </uib-tab>
+                    <uib-tab>
+                        <uib-tab-heading>
+                            <i class="glyphicon glyphicon-file" style="margin-right: 15px"></i>
+                            <strong>ZPL</strong>
+                        </uib-tab-heading>
+                        
+                        <textarea ng-model="zpl" rows="10" class="form-control" ng-readonly="true" style="margin-top: 15px; resize: vertical"></textarea>
+                    </uib-tab>                    
+                </uib-tabset> 
+
+            </div>
+            <div class="col-md-6">
+                <h2>HTML 5 Canvas</h2>
+                        
+                <canvas id="canvas" class="bordered" width="500" height="400"></canvas>               
+            </div>
+        </div>
+        
+        <h2>References</h2>
+        <ul>
+            <li><a href="https://www.zebra.com/content/dam/zebra/manuals/en-us/software/zpl-zbi2-pm-en.pdf" target="_blank">ZPL Programming language (PDF)</a></li>
+        </ul>
+        
+        <hr />
+        <p style="text-align: center;">Developed by <a href="http://www.manger.cl" targer="_blank">manger.cl</a></p>
+        
+        <toaster-container toaster-options="{'time-out': 3000, 'close-button': true, 'position-class': 'toast-bottom-right'}"></toaster-container>
+    </div>
+
+    <script type="text/ng-template" id="text-item-modal.html">
+        <div class="modal-header">
+            <h3 class="modal-title" id="modal-title">Text item</h3>
+        </div>
+        <div class="modal-body" id="modal-body">
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="form-group">
+                        <label for="">x</label>
+                        <input type="text" class="form-control input-sm" placeholder="" ng-model="textItem.x" />
+                    </div>
+                    <div class="form-group">
+                        <label for="">y</label>
+                        <input type="text" class="form-control input-sm" placeholder="" ng-model="textItem.y" />
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="form-group">
+                        <label for="">Text</label>
+                        <input type="text" class="form-control input-sm" placeholder="" ng-model="textItem.text" />
+                    </div>
+                    <div class="form-group">
+                        <label for="">Font width</label>
+                        <input type="text" class="form-control input-sm" placeholder="" ng-model="textItem.fontWidth" />
+                    </div>
+                    <div class="form-group">
+                        <label for="">Font Height</label>
+                        <input type="text" class="form-control input-sm" placeholder="" ng-model="textItem.fontHeight" />
+                    </div>
+                    <div class="form-group">
+                        <label for="">Font name</label>
+                        <input type="text" class="form-control input-sm" placeholder="" ng-model="textItem.fontName" />
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-primary btn-sm" type="button" ng-click="accept()">OK</button>
+            <button class="btn btn-default btn-sm" type="button" ng-click="cancel()">Cancel</button>
+        </div>
+    </script>
+    
+    <script type="text/ng-template" id="box-item-modal.html">
+        <div class="modal-header">
+            <h3 class="modal-title" id="modal-title">Box item</h3>
+        </div>
+        <div class="modal-body" id="modal-body">
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="form-group">
+                        <label for="">x</label>
+                        <input type="text" class="form-control input-sm" placeholder="" ng-model="boxItem.x" />
+                    </div>
+                    <div class="form-group">
+                        <label for="">y</label>
+                        <input type="text" class="form-control input-sm" placeholder="" ng-model="boxItem.y" />
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="form-group">
+                        <label for="">Width</label>
+                        <input type="text" class="form-control input-sm" placeholder="" ng-model="boxItem.width" />
+                    </div>
+                    <div class="form-group">
+                        <label for="">Height</label>
+                        <input type="text" class="form-control input-sm" placeholder="" ng-model="boxItem.height" />
+                    </div>
+                    <div class="form-group">
+                        <label for="">Thickness</label>
+                        <input type="text" class="form-control input-sm" placeholder="" ng-model="boxItem.lineWidth" />
+                    </div>
+                </div>
+            </div>
+            <p>
+                <strong>Tip:</strong><br/>
+                Create a vertical line with width "1"<br/>
+                Create an horizontal line with height "1"
+            </p>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-primary btn-sm" type="button" ng-click="accept()">OK</button>
+            <button class="btn btn-default btn-sm" type="button" ng-click="cancel()">Cancel</button>
+        </div>
+    </script>
+    
+    <script type="text/ng-template" id="barcode-item-modal.html">
+        <div class="modal-header">
+            <h3 class="modal-title" id="modal-title">Barcode item</h3>
+        </div>
+        <div class="modal-body" id="modal-body">
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="form-group">
+                        <label for="">x</label>
+                        <input type="text" class="form-control input-sm" placeholder="" ng-model="barcodeItem.x" />
+                    </div>
+                    <div class="form-group">
+                        <label for="">y</label>
+                        <input type="text" class="form-control input-sm" placeholder="" ng-model="barcodeItem.y" />
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="form-group">
+                        <label for="">Text</label>
+                        <input type="text" class="form-control input-sm" placeholder="" ng-model="barcodeItem.text" />
+                    </div>
+                    <div class="form-group">
+                        <label for="">Width</label>
+                        <input type="text" class="form-control input-sm" placeholder="" ng-model="barcodeItem.width" />
+                    </div>
+                    <div class="form-group">
+                        <label for="">Height</label>
+                        <input type="text" class="form-control input-sm" placeholder="" ng-model="barcodeItem.height" />
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-primary btn-sm" type="button" ng-click="accept()">OK</button>
+            <button class="btn btn-default btn-sm" type="button" ng-click="cancel()">Cancel</button>
+        </div>
+    </script>
+</body>
+</html>
